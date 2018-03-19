@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Feb  8 14:57:25 2018
+
+@author: BrianTornabuono
+"""
+import pandas_datareader.data as web
+import pandas as pd
+import datetime as dt
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib import style
+style.use('ggplot')
+
+def Monte_Carlo(data,ndays,nsim):
+    #only take close data
+    prices = (data['Close'])
+    #calculate returns
+    returns = prices.pct_change()
+    #take last price
+    last_price = prices[-1]
+    #simulation dataframe
+    sim_df = pd.DataFrame()
+    print('Calculating...')
+    for x in range(nsim):
+        count = 0
+        daily_vol = returns.std()
+        price_series = []
+        price = last_price * (1 + np.random.normal(0,daily_vol))
+        price_series.append(price)
+        for y in range(ndays):
+            if count == ndays:
+                break
+            price = price_series[count] * (1 + np.random.normal(0,daily_vol))
+            price_series.append(price)
+            count+=1
+        sim_df[x] = price_series
+    plt.figure(figsize=(12,9))
+    plt.plot(sim_df)
+    plt.show()
+
+def plot_candlestick(df):
+    #daily metrics
+    ohlc = df
+    #if close is larger than open, Gains = true
+    ohlc['Gains'] = ohlc['Close']>=ohlc['Open']
+    #convert T/F to 1/0
+    ohlc['Gains'] = ohlc.Gains.astype(int)
+
+    #generate figure
+    plt.figure(figsize=(12,9))
+
+    #iterate through the rows of ohlc, plot gains for that day
+    for index, row in ohlc.iterrows():
+        #if close > open
+        if row['Gains'] == 1:
+            #plot a thin green line from low to high
+            plt.vlines(x = index, ymin = row['Low'], ymax=row['High'],
+                       color='green', lw=0.5)
+            #plot a thick green line from open to close
+            plt.vlines(x = index, ymin = row['Open'], ymax=row['Close'],
+                       color='green', lw=2, alpha = 0.5)
+        elif row['Gains'] == 0:
+            #plot a thin red line from low to high
+            plt.vlines(x = index, ymin = row['Low'], ymax=row['High'],
+                       color='red', lw=0.5)
+            #plot a thick red line from open to close
+            plt.vlines(x = index, ymin = row['Open'], ymax=row['Close'],
+                       color='red', lw=2,alpha = 0.5)
+    #show plot
+    plt.show()
+
+def plot_data(df):
+    #************************calculations************************
+    stock = df
+    #9 day moving average
+    stock['MA_50'] = stock['Close'].rolling(50).mean().shift()
+    #21 day moving average
+    stock['MA_200'] = stock['Close'].rolling(200).mean()
+    #log change of stock
+    stock['Change'] = np.log(stock['Close']/stock['Close'].shift())
+    #stock volatility
+    stock['Volatility'] = stock.Change.rolling(200).std().shift()
+    #actual change of stock
+    stock['Actual_Change'] = stock['Close']-stock['Close'].shift()
+    #expected change of stock by volatility
+    stock['Expected_Change'] = stock['Close']*stock['Volatility']
+    #stock magnitude of change
+    stock['Magnitude'] = stock['Actual_Change']/stock['Expected_Change']
+    stock=stock.dropna()
+
+    #****************************plots****************************
+    #generate figures for plots
+    fig, ax1 = plt.subplots(sharey=True,figsize=(12,9))
+    #closing price and moving averages
+    ax1.plot(stock['Close'], color = 'black')
+    ax1.plot(stock['MA_9'],label = '9 Day', color = 'blue')
+    ax1.plot(stock['MA_21'],label = '21 Day',color = 'green')
+    #plot share volume
+    ax1.plot(stock['Volume']/1000000, color = 'orange',alpha=0.5,
+             label='Volume (in Millions)')
+    ax1.fill_between(stock.index.values,0,stock['Volume']/1000000,color='orange',
+                     alpha = 0.25)
+    #plot labels
+    ax1.set_xlabel('Date')
+    ax1.set_title(sym+' Stock Data')
+    plt.show()
+
+    #plot change and volatility
+    plt.figure(1,figsize=(12,9))
+    plt.plot(stock['Change'])
+    plt.plot(stock['Volatility'])
+    plt.show(1)
+
+    #plot magnitude
+    plt.figure(2,figsize=(12,9))
+    plt.hist(stock['Magnitude'],bins=50,alpha=0.75)
+    plt.show(2)
+
+# MAIN
+try:
+    while True:
+        selector = input('********************  Menu  ********************\n'
+                         '1.        Get Historical Stock Data\n'
+                         '2.        Monitor Real-Time Stock Data\n'
+                         '3.        Predict Stock Price\n\n'
+                         '(CTRL C To Exit)\n\n'
+                         'What would you like to do?: ')
+
+# Get Historical Stock Data
+        if selector == '1':
+            return_to_menu = 'n'
+            while return_to_menu != 'y':
+                #add in different time frames to view and multiple stock lookup
+                sym = input('\nWhich stock would you like to view?: ')
+                #user input how many months of stock data
+                look_back = int(input('\nHow many months of data would you like?: '))
+                #start date for stock data
+                start = dt.datetime.today() - dt.timedelta(days = look_back*30)
+                #end date for stock data
+                end = dt.datetime.today()
+                #get apple stock data from google
+                data = web.DataReader(sym,'google',start,end)
+
+                #plot functions from above
+                plot_candlestick(data)
+                plot_data(data)
+                return_to_menu = input('\nReturn to the main menu?(y/n): ')
+                if return_to_menu == 'y':
+                    pass
+
+# Real-Time Stock Data
+        if selector == '2':
+            print('Not completed')
+
+        if selector == '3':
+            #start date for stock data
+            start = dt.datetime(2016,1,1)
+            #end date for stock data
+            end = dt.datetime.today()
+            sym = input('Which stock would you like to forecast?: ')
+            #get apple stock data from google
+            data = web.DataReader(sym,'google',start,end)
+            #number of days to simulate
+            ndays = int(input('How many days do you want to predict?: '))
+            #number of simulations to run
+            nsim = int(input('How many simulatuons do you want to run?: '))
+            Monte_Carlo(data,ndays,nsim)
+
+        elif selector == '4':
+            print('COMING SOON')
+
+except KeyboardInterrupt:
+    pass
